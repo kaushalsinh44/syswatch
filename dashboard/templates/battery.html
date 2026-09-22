@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Battery Health - Laptop Mystery Detective{% endblock %}
+{% block content %}
+<h1>Battery Health Over Time</h1>
+<p class="muted">
+  Sampled about once a day (capacity drifts slowly, so there's no need to check more often).
+  A declining full-charge-capacity trend over months is the actual degradation signal.
+</p>
+
+<div style="position: relative; height: 320px;">
+  <canvas id="healthChart"></canvas>
+</div>
+
+<p id="noDataMsg" class="muted" style="display:none;">
+  No battery health samples yet -- the logger only just started tracking this. Check back after
+  it's been running a day or two.
+</p>
+<p id="noDesignMsg" class="muted" style="display:none;">
+  This machine's battery driver doesn't expose design capacity via WMI (a known limitation on
+  some laptops), so a health % can't be computed. Full-charge capacity and cycle count are
+  tracked directly instead -- watch for a downward trend in capacity or a fast-rising cycle count.
+</p>
+
+<script>
+async function loadBatteryHealth() {
+  const res = await fetch('/api/battery-health');
+  const data = await res.json();
+  if (data.length === 0) {
+    document.getElementById('noDataMsg').style.display = 'block';
+    return;
+  }
+  if (data.every(d => d.design_capacity_mwh === null)) {
+    document.getElementById('noDesignMsg').style.display = 'block';
+  }
+
+  const labels = data.map(d => d.timestamp.slice(0, 10));
+  const fullCharge = data.map(d => d.full_charge_capacity_mwh);
+  const cycles = data.map(d => d.cycle_count);
+  const healthPct = data.map(d => d.health_pct);
+
+  new Chart(document.getElementById('healthChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Full-charge capacity (mWh)', data: fullCharge, borderColor: '#3b82f6',
+          yAxisID: 'y', pointRadius: 3, borderWidth: 1.5, spanGaps: true,
+        },
+        {
+          label: 'Cycle count', data: cycles, borderColor: '#f97316',
+          yAxisID: 'y1', pointRadius: 3, borderWidth: 1.5, spanGaps: true,
+        },
+        {
+          label: 'Health %', data: healthPct, borderColor: '#10b981',
+          yAxisID: 'y1', pointRadius: 3, borderWidth: 1.5, spanGaps: true, hidden: healthPct.every(v => v === null),
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { type: 'linear', position: 'left', title: { display: true, text: 'mWh' } },
+        y1: { type: 'linear', position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'cycles / %' } },
+      },
+    },
+  });
+}
+loadBatteryHealth();
+</script>
+{% endblock %}

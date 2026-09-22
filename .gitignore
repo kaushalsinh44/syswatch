@@ -1,0 +1,24 @@
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Personal telemetry data -- this is your actual usage history, never commit it
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Generated weekly reports -- derived from your personal telemetry
+reports/*.md
+
+# Service logs -- created at runtime by the scheduled tasks
+service/*.log
+
+# Local Claude Code session config -- has this machine's absolute paths baked in
+.claude/
+
+# Editor / OS cruft
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

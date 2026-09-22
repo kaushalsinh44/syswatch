@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Laptop Mystery Detective{% endblock %}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    max-width: 980px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.15rem; margin-top: 2.25rem; }
+  h3 { font-size: 1rem; margin-top: 1.5rem; }
+  a { color: #3b82f6; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid rgba(128,128,128,0.25); font-size: 0.88rem; }
+  th { font-weight: 600; }
+  .badge {
+    display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 600; color: white; white-space: nowrap;
+  }
+  .badge-process_cpu, .badge-process_mem { background: #f97316; }
+  .badge-battery_drain { background: #dc2626; }
+  .badge-disk_io { background: #8b5cf6; }
+  .badge-net_io { background: #0ea5e9; }
+  .muted { color: #888; font-size: 0.85rem; }
+  .z-high { color: #dc2626; font-weight: 700; }
+  nav { margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: baseline; }
+  nav a.brand { font-weight: 700; color: inherit; font-size: 1.05rem; }
+  select { font: inherit; padding: 0.2rem 0.4rem; }
+  .btn-group button {
+    font: inherit; padding: 0.35rem 0.8rem; margin-right: 0.4rem; border-radius: 6px;
+    border: 1px solid rgba(128,128,128,0.4); background: transparent; cursor: pointer; color: inherit;
+  }
+  .btn-group button.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+  canvas { max-width: 100%; }
+</style>
+</head>
+<body>
+<nav>
+  <a class="brand" href="/">🔍 Laptop Mystery Detective</a>
+  <span><a href="/">Timeline</a> &middot; <a href="/battery">Battery Health</a></span>
+</nav>
+{% block content %}{% endblock %}
+</body>
+</html>

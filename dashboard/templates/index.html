@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Laptop Mystery Detective{% endblock %}
+{% block content %}
+<h1>System Timeline</h1>
+<p class="muted">Latest sample: {{ latest or "no data yet" }}</p>
+
+<div class="btn-group" id="rangeButtons">
+  <button data-range="24h" class="active">Last 24h</button>
+  <button data-range="7d">Last 7 days</button>
+</div>
+<div style="position: relative; height: 320px;">
+  <canvas id="timelineChart"></canvas>
+</div>
+
+<h2>Flagged anomalies
+  {% if available_dates %}
+  <select id="dateSelect" onchange="location.href = '/?date=' + this.value">
+    {% for d in available_dates %}
+    <option value="{{ d }}" {% if d == anomaly_date %}selected{% endif %}>{{ d }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+</h2>
+
+{% if anomalies %}
+<p class="muted">
+  Showing top {{ shown_count }} of {{ total_count }} flagged for {{ anomaly_date }}, ranked by how unusual (z-score).
+</p>
+<table>
+  <tr><th>Time</th><th>Category</th><th>Detail</th><th>Z-score</th><th></th></tr>
+  {% for a in anomalies %}
+  <tr>
+    <td>{{ a.timestamp[11:19] }}</td>
+    <td><span class="badge badge-{{ a.category }}">{{ a.category.replace('_', ' ') }}</span></td>
+    <td>{{ a.description }}</td>
+    <td class="{{ 'z-high' if a.z_score > 8 else '' }}">{{ '%.1f'|format(a.z_score) }}</td>
+    <td><a href="/case/{{ a.id }}">investigate &rarr;</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">
+  No anomalies flagged for this date. Run <code>python anomaly.py</code> to (re)analyze,
+  or check back once more history has accumulated.
+</p>
+{% endif %}
+
+<script>
+let chart;
+async function loadTimeline(range) {
+  const res = await fetch(`/api/timeline?range=${range}`);
+  const data = await res.json();
+  const labels = data.map(d => range === '24h' ? d.timestamp.slice(11, 16) : d.timestamp.slice(5, 16).replace('T', ' '));
+  const cpu = data.map(d => d.cpu_pct);
+  const mem = data.map(d => d.mem_pct);
+  const battery = data.map(d => d.battery_pct);
+
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('timelineChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'CPU %', data: cpu, borderColor: '#3b82f6', pointRadius: 0, borderWidth: 1.5, tension: 0.1 },
+        { label: 'Mem %', data: mem, borderColor: '#10b981', pointRadius: 0, borderWidth: 1.5, tension: 0.1 },
+        { label: 'Battery %', data: battery, borderColor: '#f59e0b', pointRadius: 0, borderWidth: 1.5, tension: 0.1, spanGaps: true },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { min: 0, max: 100 } },
+    },
+  });
+}
+
+document.getElementById('rangeButtons').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-range]');
+  if (!btn) return;
+  document.querySelectorAll('#rangeButtons button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadTimeline(btn.dataset.range);
+});
+
+loadTimeline('24h');
+</script>
+{% endblock %}

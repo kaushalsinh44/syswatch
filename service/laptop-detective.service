@@ -1,0 +1,35 @@
+# UNTESTED -- template only, Windows is the tested platform for this project.
+#
+# logger.py loops internally, so this is a plain long-running service with
+# Restart=always -- NOT a .service + .timer pair (a timer is for periodic
+# short-lived invocations, which is the wrong shape here).
+#
+# Install as a per-user unit (no root needed):
+#   mkdir -p ~/.config/systemd/user
+#   cp laptop-detective.service ~/.config/systemd/user/
+#   # edit the paths below first!
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now laptop-detective.service
+#
+# Status / logs:
+#   systemctl --user status laptop-detective.service
+#   journalctl --user -u laptop-detective.service -f
+#
+# Stop / remove:
+#   systemctl --user disable --now laptop-detective.service
+
+[Unit]
+Description=Laptop Mystery Detective telemetry logger
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/path/to/laptop-detective/venv/bin/python3 /path/to/laptop-detective/logger.py
+WorkingDirectory=/path/to/laptop-detective
+Restart=always
+RestartSec=10
+StandardOutput=append:/path/to/laptop-detective/service/logger_output.log
+StandardError=append:/path/to/laptop-detective/service/logger_error.log
+
+[Install]
+WantedBy=default.target

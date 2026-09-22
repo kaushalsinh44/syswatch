@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UNTESTED -- template only, Windows is the tested platform for this project. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.laptopdetective.logger</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/laptop-detective/venv/bin/python3</string>  <!-- USER MUST EDIT -->
+        <string>/path/to/laptop-detective/logger.py</string>          <!-- USER MUST EDIT -->
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/path/to/laptop-detective</string>                        <!-- USER MUST EDIT -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/path/to/laptop-detective/service/logger_output.log</string>
+    <key>StandardErrorPath</key>
+    <string>/path/to/laptop-detective/service/logger_error.log</string>
+</dict>
+</plist>
+
+<!--
+Install (untested):
+  cp com.laptopdetective.logger.plist ~/Library/LaunchAgents/
+  launchctl load ~/Library/LaunchAgents/com.laptopdetective.logger.plist
+
+Remove:
+  launchctl unload ~/Library/LaunchAgents/com.laptopdetective.logger.plist
+  rm ~/Library/LaunchAgents/com.laptopdetective.logger.plist
+-->

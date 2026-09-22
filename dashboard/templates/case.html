@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Case file - Laptop Mystery Detective{% endblock %}
+{% block content %}
+<p><a href="/">&larr; back to dashboard</a></p>
+<h1>Case file</h1>
+<p>
+  <span class="badge badge-{{ anomaly.category }}">{{ anomaly.category.replace('_', ' ') }}</span>
+  {{ anomaly.description }}
+</p>
+<p class="muted">
+  Flagged at {{ anomaly.timestamp }} &middot;
+  z-score <strong>{{ '%.1f'|format(anomaly.z_score) }}</strong> &middot;
+  value {{ '%.2f'|format(anomaly.value) }} vs baseline {{ '%.2f'|format(anomaly.baseline_mean) }}
+  (&plusmn;{{ '%.2f'|format(anomaly.baseline_std) }})
+</p>
+
+<h2>What else was happening ({{ window_start[11:19] }}&ndash;{{ window_end[11:19] }} UTC)</h2>
+
+{% if process_events %}
+<h3>App launches / exits in this window</h3>
+<p class="muted">
+  This is the actual "oh, that's just when X launched" moment -- a new process appearing right
+  before a flagged spike is usually the explanation.
+</p>
+<table>
+  <tr><th>Time</th><th>Event</th><th>Process</th><th>PID</th></tr>
+  {% for e in process_events %}
+  <tr>
+    <td>{{ e.timestamp[11:19] }}</td>
+    <td>{% if e.event == 'started' %}&#128994; started{% else %}&#9898; exited{% endif %}</td>
+    <td>{{ e.process_name }}</td>
+    <td>{{ e.pid }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+{% if other_anomalies %}
+<h3>Other anomalies in this same window</h3>
+<table>
+  <tr><th>Time</th><th>Category</th><th>Detail</th><th>Z-score</th><th></th></tr>
+  {% for a in other_anomalies %}
+  <tr>
+    <td>{{ a.timestamp[11:19] }}</td>
+    <td><span class="badge badge-{{ a.category }}">{{ a.category.replace('_', ' ') }}</span></td>
+    <td>{{ a.description }}</td>
+    <td>{{ '%.1f'|format(a.z_score) }}</td>
+    <td><a href="/case/{{ a.id }}">investigate &rarr;</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+
+<h3>Processes active in this window</h3>
+{% if processes %}
+<table>
+  <tr><th>Process</th><th>Peak CPU %</th><th>Peak Mem %</th><th># samples</th></tr>
+  {% for p in processes %}
+  <tr>
+    <td>{{ p.name }}</td>
+    <td>{{ '%.1f'|format(p.peak_cpu) }}</td>
+    <td>{{ '%.1f'|format(p.peak_mem) }}</td>
+    <td>{{ p.count }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No process data in this window.</p>
+{% endif %}
+
+<h3>System metrics in this window</h3>
+<table>
+  <tr><th>Time</th><th>CPU %</th><th>Mem %</th><th>Disk R / W</th><th>Net &uarr; / &darr;</th><th>Battery</th></tr>
+  {% for s in samples %}
+  <tr>
+    <td>{{ s.timestamp[11:19] }}</td>
+    <td>{{ '%.1f'|format(s.cpu_pct) }}</td>
+    <td>{{ '%.1f'|format(s.mem_pct) }}</td>
+    <td>{{ (s.disk_read_bytes/1024)|round(0)|int }}KB / {{ (s.disk_write_bytes/1024)|round(0)|int }}KB</td>
+    <td>{{ (s.net_sent_bytes/1024)|round(0)|int }}KB / {{ (s.net_recv_bytes/1024)|round(0)|int }}KB</td>
+    <td>
+      {% if s.battery_pct is not none %}{{ '%.0f'|format(s.battery_pct) }}%{% if s.charging %} &#9889;{% endif %}{% else %}&mdash;{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<p><a href="/">&larr; back to dashboard</a></p>
+{% endblock %}
