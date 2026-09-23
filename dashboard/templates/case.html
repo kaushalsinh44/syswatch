@@ -27,9 +27,15 @@
   {% for e in process_events %}
   <tr>
     <td>{{ e.timestamp[11:19] }}</td>
-    <td>{% if e.event == 'started' %}&#128994; started{% else %}&#9898; exited{% endif %}</td>
+    <td>
+      {% if e.event == 'started' %}&#128994; started{% else %}&#9898; exited{% endif %}
+      {% if e.count > 1 %}<span class="badge" style="background:var(--text-muted)">&times;{{ e.count }}</span>{% endif %}
+    </td>
     <td>{{ e.process_name }}</td>
-    <td>{{ e.pid }}</td>
+    <td>
+      {% if e.pids|length <= 3 %}{{ e.pids|join(', ') }}
+      {% else %}{{ e.pids[:3]|join(', ') }} +{{ e.pids|length - 3 }} more{% endif %}
+    </td>
   </tr>
   {% endfor %}
 </table>

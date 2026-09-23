@@ -136,6 +136,47 @@ def latest_sample_time(db: sqlite3.Connection) -> str | None:
     return row[0] if row else None
 
 
+def group_process_events(events, gap_seconds: float = 3.0) -> list[dict]:
+    """Collapse bursts of identical (process_name, event) pairs into one row
+    with a count -- e.g. an Electron app like Discord/Chrome/Steam routinely
+    spawns half a dozen helper processes within the same second, which would
+    otherwise repeat the same line 7 times in the case file and bury the
+    actually-useful signal (what app launched) in noise.
+    """
+    if not events:
+        return []
+
+    grouped: dict[tuple[str, str], list] = {}
+    for e in events:
+        grouped.setdefault((e["process_name"], e["event"]), []).append(e)
+
+    result = []
+    for (name, event), items in grouped.items():
+        items = sorted(items, key=lambda e: e["timestamp"])
+        run = [items[0]]
+        for e in items[1:]:
+            prev_t = datetime.fromisoformat(run[-1]["timestamp"])
+            cur_t = datetime.fromisoformat(e["timestamp"])
+            if (cur_t - prev_t).total_seconds() <= gap_seconds:
+                run.append(e)
+            else:
+                result.append(_summarize_event_run(name, event, run))
+                run = [e]
+        result.append(_summarize_event_run(name, event, run))
+
+    return sorted(result, key=lambda r: r["timestamp"])
+
+
+def _summarize_event_run(name: str, event: str, run) -> dict:
+    return {
+        "timestamp": run[0]["timestamp"],
+        "process_name": name,
+        "event": event,
+        "count": len(run),
+        "pids": [e["pid"] for e in run],
+    }
+
+
 def pick_anomaly_date(db: sqlite3.Connection, latest_date: str | None) -> str | None:
     """Prefer the latest day's anomalies; fall back to the most recent day that has any."""
     if latest_date:
@@ -413,13 +454,14 @@ def case(anomaly_id: int):
         entry["count"] += 1
     processes = sorted(proc_agg.values(), key=lambda x: x["peak_cpu"], reverse=True)
 
-    process_events = db.execute(
+    process_events_raw = db.execute(
         """
         SELECT timestamp, event, process_name, pid FROM process_events
         WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp
         """,
         (window_start, window_end),
     ).fetchall()
+    process_events = group_process_events(process_events_raw)
 
     other_anomalies = db.execute(
         """

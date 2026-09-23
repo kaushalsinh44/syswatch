@@ -177,6 +177,66 @@ class TestKillProcessSafetyChecks:
         assert "already gone" in response.get_json()["error"]
 
 
+class TestGroupProcessEvents:
+    def _event(self, ts_str, name="Discord.exe", event="started", pid=1000):
+        return {"timestamp": ts_str, "process_name": name, "event": event, "pid": pid}
+
+    def test_empty_input(self):
+        assert dashboard_app.group_process_events([]) == []
+
+    def test_single_event_passes_through_with_count_one(self):
+        result = dashboard_app.group_process_events([self._event("2026-09-23T12:05:12+00:00")])
+        assert len(result) == 1
+        assert result[0]["count"] == 1
+        assert result[0]["pids"] == [1000]
+
+    def test_burst_of_same_process_within_gap_collapses_to_one_row(self):
+        # Electron apps routinely spawn several helper processes within the
+        # same second -- this is what fixed the "7 identical Discord.exe
+        # started rows" noise seen in a real case file.
+        events = [
+            self._event("2026-09-23T12:05:12+00:00", pid=100),
+            self._event("2026-09-23T12:05:12+00:00", pid=101),
+            self._event("2026-09-23T12:05:13+00:00", pid=102),
+        ]
+        result = dashboard_app.group_process_events(events)
+        assert len(result) == 1
+        assert result[0]["count"] == 3
+        assert result[0]["pids"] == [100, 101, 102]
+
+    def test_events_far_apart_stay_separate(self):
+        events = [
+            self._event("2026-09-23T12:05:12+00:00", pid=100),
+            self._event("2026-09-23T12:10:00+00:00", pid=200),  # ~5min later
+        ]
+        result = dashboard_app.group_process_events(events)
+        assert len(result) == 2
+
+    def test_different_process_names_never_merge(self):
+        events = [
+            self._event("2026-09-23T12:05:12+00:00", name="Discord.exe", pid=100),
+            self._event("2026-09-23T12:05:12+00:00", name="chrome.exe", pid=200),
+        ]
+        result = dashboard_app.group_process_events(events)
+        assert len(result) == 2
+
+    def test_started_and_exited_never_merge(self):
+        events = [
+            self._event("2026-09-23T12:05:12+00:00", event="started", pid=100),
+            self._event("2026-09-23T12:05:12+00:00", event="stopped", pid=100),
+        ]
+        result = dashboard_app.group_process_events(events)
+        assert len(result) == 2
+
+    def test_result_sorted_by_timestamp(self):
+        events = [
+            self._event("2026-09-23T12:10:00+00:00", name="b.exe", pid=1),
+            self._event("2026-09-23T12:05:00+00:00", name="a.exe", pid=2),
+        ]
+        result = dashboard_app.group_process_events(events)
+        assert [r["process_name"] for r in result] == ["a.exe", "b.exe"]
+
+
 class TestApiTimeline:
     def test_live_mode_uses_last_n_hours_from_latest_sample(self, client, temp_db_path):
         seed_sample(temp_db_path, "2026-09-23T10:00:00+00:00")
