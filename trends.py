@@ -41,6 +41,10 @@ CREATE INDEX IF NOT EXISTS idx_trends_as_of_date ON trends(as_of_date);
 """
 
 
+def table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+
 def init_trends_table(conn: sqlite3.Connection) -> None:
     conn.executescript(TRENDS_SCHEMA)
     conn.commit()
@@ -128,6 +132,12 @@ def main() -> None:
 
     conn = sqlite3.connect(DB_PATH)
     init_trends_table(conn)
+
+    if not table_exists(conn, "process_samples"):
+        print("No telemetry data found yet -- run logger.py first to start collecting data.")
+        conn.close()
+        return
+
     trends = compute_trends(conn, as_of)
     save_trends(conn, as_of, trends)
     conn.close()

@@ -61,6 +61,10 @@ CREATE INDEX IF NOT EXISTS idx_anomalies_timestamp ON anomalies(timestamp);
 """
 
 
+def table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
+
+
 def init_anomalies_table(conn: sqlite3.Connection) -> None:
     conn.executescript(ANOMALIES_SCHEMA)
     conn.commit()
@@ -416,6 +420,11 @@ def main() -> None:
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = ON;")
     init_anomalies_table(conn)
+
+    if not table_exists(conn, "samples"):
+        print("No telemetry data found yet -- run logger.py first to start collecting data.")
+        conn.close()
+        return
 
     if args.all:
         row = conn.execute("SELECT MIN(substr(timestamp,1,10)), MAX(substr(timestamp,1,10)) FROM samples").fetchone()

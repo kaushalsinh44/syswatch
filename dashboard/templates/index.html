@@ -184,13 +184,17 @@ async function loadStats() {
   document.getElementById('statSamples').textContent = `${s.total_samples.toLocaleString()} samples collected`;
 }
 
-const PROTECTED_PROCESS_NAMES = new Set([
-  'system', 'system idle process', 'registry', 'smss.exe', 'csrss.exe', 'wininit.exe',
-  'winlogon.exe', 'services.exe', 'lsass.exe', 'svchost.exe', 'explorer.exe', 'dwm.exe',
-  'python.exe', 'pythonw.exe',
-]);
+// Fetched once from the server (rather than duplicated here) so this list can never silently
+// drift out of sync with PROTECTED_PROCESS_NAMES in dashboard/app.py, which is what's actually
+// enforced -- this client-side copy is purely a UX nicety (disable the button up front instead
+// of showing a confirm dialog that then fails).
+let protectedProcessNames = new Set();
+const protectedNamesReady = fetch('/api/protected-processes')
+  .then(r => r.json())
+  .then(names => { protectedProcessNames = new Set(names); });
 
 async function loadTopProcesses() {
+  await protectedNamesReady;
   const res = await fetch('/api/top-processes');
   const data = await res.json();
   document.getElementById('topProcAsOf').textContent = timeAgo(data.as_of);
@@ -210,7 +214,7 @@ async function loadTopProcesses() {
     const actionTd = document.createElement('td');
     const btn = document.createElement('button');
     btn.className = 'kill-btn';
-    const isProtected = PROTECTED_PROCESS_NAMES.has(p.process_name.toLowerCase());
+    const isProtected = protectedProcessNames.has(p.process_name.toLowerCase());
     if (isProtected) {
       btn.disabled = true;
       btn.textContent = 'Protected';

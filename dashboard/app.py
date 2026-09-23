@@ -27,6 +27,76 @@ PROTECTED_PROCESS_NAMES = {
     "python.exe", "pythonw.exe",
 }
 
+# The dashboard is a read-only consumer of tables that logger.py/anomaly.py/trends.py own and
+# create themselves -- but if someone opens the dashboard before ever running those (e.g. right
+# after cloning the repo), every query would otherwise fail with "no such table". Idempotently
+# ensuring these exist here means the dashboard always loads cleanly and just shows "no data yet"
+# instead of crashing, regardless of what has or hasn't been run yet.
+ENSURE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS samples (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp        TEXT NOT NULL,
+    interval_sec     REAL NOT NULL,
+    cpu_pct          REAL NOT NULL,
+    mem_pct          REAL NOT NULL,
+    disk_read_bytes  INTEGER NOT NULL,
+    disk_write_bytes INTEGER NOT NULL,
+    net_sent_bytes   INTEGER NOT NULL,
+    net_recv_bytes   INTEGER NOT NULL,
+    battery_pct      REAL,
+    charging         INTEGER
+);
+CREATE TABLE IF NOT EXISTS process_samples (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    sample_id    INTEGER NOT NULL REFERENCES samples(id) ON DELETE CASCADE,
+    timestamp    TEXT NOT NULL,
+    process_name TEXT NOT NULL,
+    pid          INTEGER,
+    cpu_pct      REAL NOT NULL,
+    mem_pct      REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS battery_health (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp                TEXT NOT NULL,
+    full_charge_capacity_mwh INTEGER,
+    design_capacity_mwh      INTEGER,
+    cycle_count              INTEGER,
+    health_pct               REAL
+);
+CREATE TABLE IF NOT EXISTS process_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp    TEXT NOT NULL,
+    event        TEXT NOT NULL,
+    process_name TEXT NOT NULL,
+    pid          INTEGER
+);
+CREATE TABLE IF NOT EXISTS anomalies (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_at        TEXT NOT NULL,
+    target_date   TEXT NOT NULL,
+    timestamp     TEXT NOT NULL,
+    category      TEXT NOT NULL,
+    subject       TEXT,
+    value         REAL NOT NULL,
+    baseline_mean REAL NOT NULL,
+    baseline_std  REAL NOT NULL,
+    z_score       REAL NOT NULL,
+    description   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS trends (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    computed_at TEXT NOT NULL,
+    as_of_date  TEXT NOT NULL,
+    subject     TEXT NOT NULL,
+    metric      TEXT NOT NULL,
+    recent_avg  REAL NOT NULL,
+    prior_avg   REAL NOT NULL,
+    pct_change  REAL NOT NULL,
+    direction   TEXT NOT NULL,
+    description TEXT NOT NULL
+);
+"""
+
 app = Flask(__name__)
 
 
@@ -34,6 +104,7 @@ def get_db() -> sqlite3.Connection:
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
         g.db.row_factory = sqlite3.Row
+        g.db.executescript(ENSURE_SCHEMA)
     return g.db
 
 
@@ -59,6 +130,13 @@ def pick_anomaly_date(db: sqlite3.Connection, latest_date: str | None) -> str | 
             return latest_date
     row = db.execute("SELECT MAX(target_date) FROM anomalies").fetchone()
     return row[0] if row and row[0] else latest_date
+
+
+@app.route("/api/protected-processes")
+def api_protected_processes():
+    """Single source of truth for the client -- avoids the JS copy silently drifting out of
+    sync with PROTECTED_PROCESS_NAMES (the list that actually gets enforced server-side)."""
+    return jsonify(sorted(PROTECTED_PROCESS_NAMES))
 
 
 @app.route("/")

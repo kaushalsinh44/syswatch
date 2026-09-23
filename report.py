@@ -20,6 +20,26 @@ REPORTS_DIR = Path(__file__).parent / "reports"
 TOP_MYSTERIES_SHOWN = 10
 DASHBOARD_BASE_URL = "http://localhost:5050"
 
+# report.py only reads the anomalies table -- it's anomaly.py's job to create it. But if
+# anomaly.py has never been run yet (e.g. right after cloning the repo), querying it would
+# otherwise crash instead of just reporting "no anomalies this week", which is what an empty
+# table should mean anyway.
+ENSURE_ANOMALIES_TABLE = """
+CREATE TABLE IF NOT EXISTS anomalies (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_at        TEXT NOT NULL,
+    target_date   TEXT NOT NULL,
+    timestamp     TEXT NOT NULL,
+    category      TEXT NOT NULL,
+    subject       TEXT,
+    value         REAL NOT NULL,
+    baseline_mean REAL NOT NULL,
+    baseline_std  REAL NOT NULL,
+    z_score       REAL NOT NULL,
+    description   TEXT NOT NULL
+);
+"""
+
 
 def most_recent_monday(today: date) -> date:
     return today - timedelta(days=today.weekday())
@@ -119,6 +139,7 @@ def main() -> None:
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.executescript(ENSURE_ANOMALIES_TABLE)
     _, out_path = generate_report(conn, week_start)
     conn.close()
 
