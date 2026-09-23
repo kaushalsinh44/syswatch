@@ -10,6 +10,7 @@ import os
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 import psutil
 from flask import Flask, abort, g, jsonify, render_template, request
@@ -98,6 +99,21 @@ CREATE TABLE IF NOT EXISTS trends (
 """
 
 app = Flask(__name__)
+
+
+def is_same_origin_request() -> bool:
+    """Basic CSRF guard for the one endpoint with a real destructive side effect
+    (killing a process). Flask binds to 127.0.0.1 only, but that alone doesn't stop
+    a malicious page open in another tab from silently POSTing to a localhost port
+    it guesses -- "localhost CSRF" is a real, known attack class. Browsers always
+    set Origin (or Referer as a fallback) to the REQUESTING page's own origin on a
+    cross-origin request, never ours, so this reliably distinguishes the dashboard's
+    own same-origin fetch() calls from a drive-by request out of the client's control.
+    """
+    source = request.headers.get("Origin") or request.headers.get("Referer")
+    if not source:
+        return False  # a genuine same-origin fetch() always sends Origin -- fail closed
+    return urlparse(source).netloc == request.host
 
 
 def get_db() -> sqlite3.Connection:
@@ -241,6 +257,9 @@ def api_top_processes():
 
 @app.route("/api/kill-process", methods=["POST"])
 def api_kill_process():
+    if not is_same_origin_request():
+        return jsonify({"ok": False, "error": "Cross-origin request blocked."}), 403
+
     data = request.get_json(silent=True) or {}
     pid = data.get("pid")
     expected_name = str(data.get("process_name") or "").strip().lower()
