@@ -277,6 +277,26 @@ To generate one automatically every Monday for the week that just ended:
 Registers `LaptopMysteryDetectiveWeeklyReport` (Mondays at 02:30 local by default -- after the
 02:00 daily anomaly task, so the previous day's data is finalized first).
 
+## Testing
+
+```powershell
+pip install pytest  # already in requirements.txt
+pytest               # runs in ~1-2 seconds
+```
+
+Unit tests for the core logic -- z-score anomaly detection, episode collapsing, trend
+comparison, the kill-process safety checks (protected-name denylist, PID-reuse guard, CSRF
+guard), and the fresh/empty-database handling. Every test uses a throwaway temp database
+(`tests/conftest.py`'s `temp_db_path` fixture) -- none of them ever touch your real
+`data/telemetry.db`.
+
+Two bugs were actually found by writing these tests, not just guessed at: a `zscore()` edge
+case where a *perfectly* constant historical baseline (zero variance) made any deviation,
+however extreme, silently register as "normal" instead of maximally anomalous (real data is
+never perfectly constant, which is why this never surfaced before); and the crash-on-fresh-clone
+issue described above, caught by literally swapping out the real database for an empty one and
+hitting every dashboard route.
+
 ## Troubleshooting
 
 - **Venv activation blocked**: see the `Set-ExecutionPolicy` command above.

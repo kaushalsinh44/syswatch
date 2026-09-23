@@ -76,7 +76,11 @@ def hour_of(ts: str) -> int:
 
 def zscore(value: float, mean: float, std: float) -> float:
     if std == 0:
-        return 0.0
+        # A perfectly constant historical baseline (every past sample identical)
+        # means ANY deviation is maximally anomalous, not "normal" -- returning 0
+        # here would let even a massive spike slip through undetected. Only true
+        # if value == mean too (no deviation at all) is 0 actually correct.
+        return 0.0 if value == mean else float("inf")
     return (value - mean) / std
 
 

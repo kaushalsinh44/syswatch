@@ -1,3 +1,6 @@
 psutil==7.0.0
 Flask==3.1.0
 # anomaly.py uses only the stdlib `statistics` module -- no numpy needed.
+
+# Testing only (see tests/) -- not needed to run the app itself.
+pytest==8.3.4
