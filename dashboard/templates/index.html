@@ -2,13 +2,47 @@
 {% block title %}Dashboard - Laptop Mystery Detective{% endblock %}
 {% block content %}
 <h1>System Timeline</h1>
-<p class="muted">Latest sample: {{ latest or "no data yet" }}</p>
+<p class="muted"><span class="live-dot"></span>Live &middot; last sample <span id="lastSampleAgo">{{ latest or "no data yet" }}</span></p>
+{% set is_live = (not anomaly_date) or anomaly_date == latest_date %}
+
+<div class="stat-grid" id="statGrid">
+  <div class="stat-card">
+    <div class="label">CPU right now</div>
+    <div class="value" id="statCpu">&mdash;</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Memory right now</div>
+    <div class="value" id="statMem">&mdash;</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Battery</div>
+    <div class="value" id="statBattery">&mdash;</div>
+  </div>
+  <div class="stat-card" id="anomalyCard">
+    <div class="label">Mysteries today</div>
+    <div class="value" id="statAnomalies">&mdash;</div>
+    <div class="sub" id="anomalyVerdict"></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Apps launched (24h)</div>
+    <div class="value" id="statLaunches">&mdash;</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Days investigated</div>
+    <div class="value" id="statDays">&mdash;</div>
+    <div class="sub" id="statSamples"></div>
+  </div>
+</div>
 
 <div class="btn-group" id="rangeButtons">
-  <button data-range="24h" class="active">Last 24h</button>
-  <button data-range="7d">Last 7 days</button>
+  <button data-range="24h" class="active">{{ 'Last 24h' if is_live else 'That day' }}</button>
+  <button data-range="7d">{{ 'Last 7 days' if is_live else '7 days ending that day' }}</button>
 </div>
-<div style="position: relative; height: 320px;">
+<p class="muted" id="chartScopeLabel">
+  {% if is_live %}Showing live data, updating automatically.
+  {% else %}Showing <strong>{{ anomaly_date }}</strong> (not live -- pick "{{ latest_date }}" above to go back to live view).{% endif %}
+</p>
+<div class="panel" style="position: relative; height: 320px;">
   <canvas id="timelineChart"></canvas>
 </div>
 
@@ -46,9 +80,15 @@
 {% endif %}
 
 <script>
+const IS_LIVE = {{ 'true' if is_live else 'false' }};
+const VIEW_DATE = {{ (anomaly_date or '') | tojson }};
+
 let chart;
 async function loadTimeline(range) {
-  const res = await fetch(`/api/timeline?range=${range}`);
+  const url = IS_LIVE
+    ? `/api/timeline?range=${range}`
+    : `/api/timeline?range=${range}&date=${VIEW_DATE}`;
+  const res = await fetch(url);
   const data = await res.json();
   const labels = data.map(d => range === '24h' ? d.timestamp.slice(11, 16) : d.timestamp.slice(5, 16).replace('T', ' '));
   const cpu = data.map(d => d.cpu_pct);
@@ -84,6 +124,60 @@ document.getElementById('rangeButtons').addEventListener('click', (e) => {
   loadTimeline(btn.dataset.range);
 });
 
+function timeAgo(isoTimestamp) {
+  if (!isoTimestamp) return 'no data yet';
+  const seconds = Math.floor((Date.now() - new Date(isoTimestamp).getTime()) / 1000);
+  if (seconds < 5) return 'just now';
+  if (seconds < 90) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 90) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
+}
+
+async function loadStats() {
+  const res = await fetch('/api/stats');
+  const s = await res.json();
+
+  document.getElementById('lastSampleAgo').textContent = timeAgo(s.latest_timestamp);
+  document.getElementById('statCpu').textContent = s.cpu_pct !== null ? `${s.cpu_pct.toFixed(0)}%` : '—';
+  document.getElementById('statMem').textContent = s.mem_pct !== null ? `${s.mem_pct.toFixed(0)}%` : '—';
+
+  const batteryEl = document.getElementById('statBattery');
+  if (s.battery_pct !== null) {
+    batteryEl.textContent = `${s.battery_pct.toFixed(0)}%${s.charging ? ' ⚡' : ''}`;
+  } else {
+    batteryEl.textContent = 'no battery';
+  }
+
+  const anomalyEl = document.getElementById('statAnomalies');
+  const anomalyCard = document.getElementById('anomalyCard');
+  const verdictEl = document.getElementById('anomalyVerdict');
+  anomalyEl.textContent = s.anomalies_today;
+  anomalyCard.classList.remove('good', 'warn', 'bad');
+  if (s.anomalies_today === 0) {
+    anomalyCard.classList.add('good');
+    verdictEl.textContent = 'Clean case so far ✅';
+  } else if (s.anomalies_today < 10) {
+    anomalyCard.classList.add('warn');
+    verdictEl.textContent = 'Worth a look 🔍';
+  } else {
+    anomalyCard.classList.add('bad');
+    verdictEl.textContent = 'Busy day for the detective 🕵️';
+  }
+
+  document.getElementById('statLaunches').textContent = s.launches_24h;
+  document.getElementById('statDays').textContent = s.days_monitored;
+  document.getElementById('statSamples').textContent = `${s.total_samples.toLocaleString()} samples collected`;
+}
+
 loadTimeline('24h');
+loadStats();
+setInterval(loadStats, 20000);
+if (IS_LIVE) {
+  setInterval(() => {
+    const active = document.querySelector('#rangeButtons button.active');
+    loadTimeline(active ? active.dataset.range : '24h');
+  }, 30000);
+}
 </script>
 {% endblock %}

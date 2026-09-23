@@ -6,45 +6,87 @@
 <title>{% block title %}Laptop Mystery Detective{% endblock %}</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
-  :root { color-scheme: light dark; }
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0f17; --surface: #131a26; --surface-2: #1a2333; --border: rgba(148,163,184,0.15);
+    --text: #e5e9f0; --text-muted: #8b96a8; --accent: #3b82f6; --good: #22c55e; --warn: #f97316; --bad: #ef4444;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f4f6fa; --surface: #ffffff; --surface-2: #eef1f6; --border: rgba(15,23,42,0.08); --text: #0f172a; --text-muted: #64748b; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-    max-width: 980px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5;
+    margin: 0; line-height: 1.5; background: var(--bg); color: var(--text);
   }
-  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
-  h2 { font-size: 1.15rem; margin-top: 2.25rem; }
-  h3 { font-size: 1rem; margin-top: 1.5rem; }
-  a { color: #3b82f6; text-decoration: none; }
+  .page { max-width: 1440px; margin: 0 auto; padding: 0 1.5rem 3rem; }
+  h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.2rem; margin-top: 2.25rem; }
+  h3 { font-size: 1.02rem; margin-top: 1.5rem; }
+  a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
-  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid rgba(128,128,128,0.25); font-size: 0.88rem; }
-  th { font-weight: 600; }
+  th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+  th { font-weight: 600; color: var(--text-muted); text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.03em; }
+  tbody tr:hover { background: var(--surface-2); }
   .badge {
     display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px;
     font-size: 0.72rem; font-weight: 600; color: white; white-space: nowrap;
   }
-  .badge-process_cpu, .badge-process_mem { background: #f97316; }
-  .badge-battery_drain { background: #dc2626; }
+  .badge-process_cpu, .badge-process_mem { background: var(--warn); }
+  .badge-battery_drain { background: var(--bad); }
   .badge-disk_io { background: #8b5cf6; }
   .badge-net_io { background: #0ea5e9; }
-  .muted { color: #888; font-size: 0.85rem; }
-  .z-high { color: #dc2626; font-weight: 700; }
-  nav { margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: baseline; }
-  nav a.brand { font-weight: 700; color: inherit; font-size: 1.05rem; }
-  select { font: inherit; padding: 0.2rem 0.4rem; }
+  .muted { color: var(--text-muted); font-size: 0.85rem; }
+  .z-high { color: var(--bad); font-weight: 700; }
+  nav {
+    position: sticky; top: 0; z-index: 10; background: var(--bg);
+    border-bottom: 1px solid var(--border); padding: 1rem 1.5rem;
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;
+  }
+  nav a.brand { font-weight: 700; color: var(--text); font-size: 1.05rem; }
+  nav .nav-links a { color: var(--text-muted); margin-left: 1.25rem; }
+  nav .nav-links a.current { color: var(--text); font-weight: 600; }
+  select { font: inherit; padding: 0.3rem 0.5rem; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
   .btn-group button {
     font: inherit; padding: 0.35rem 0.8rem; margin-right: 0.4rem; border-radius: 6px;
-    border: 1px solid rgba(128,128,128,0.4); background: transparent; cursor: pointer; color: inherit;
+    border: 1px solid var(--border); background: var(--surface); cursor: pointer; color: var(--text);
   }
-  .btn-group button.active { background: #3b82f6; border-color: #3b82f6; color: white; }
+  .btn-group button.active { background: var(--accent); border-color: var(--accent); color: white; }
   canvas { max-width: 100%; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.9rem; margin: 1rem 0 1.75rem; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .stat-card .label { color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.35rem; }
+  .stat-card .value { font-size: 1.7rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat-card .sub { color: var(--text-muted); font-size: 0.78rem; margin-top: 0.2rem; }
+  .stat-card.good .value { color: var(--good); }
+  .stat-card.warn .value { color: var(--warn); }
+  .stat-card.bad .value { color: var(--bad); }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem 1.4rem; margin: 1rem 0; }
+  .live-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good);
+    margin-right: 0.4rem; animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 </style>
 </head>
 <body>
 <nav>
   <a class="brand" href="/">🔍 Laptop Mystery Detective</a>
-  <span><a href="/">Timeline</a> &middot; <a href="/battery">Battery Health</a></span>
+  <span class="nav-links">
+    <a href="/" class="{{ 'current' if request.path == '/' else '' }}">Timeline</a>
+    <a href="/battery" class="{{ 'current' if request.path == '/battery' else '' }}">Battery Health</a>
+  </span>
 </nav>
+<div class="page">
 {% block content %}{% endblock %}
+</div>
 </body>
 </html>

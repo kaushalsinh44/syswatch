@@ -7,7 +7,7 @@ concurrent reads don't block the writer.
 """
 
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from flask import Flask, abort, g, jsonify, render_template, request
@@ -72,15 +72,62 @@ def index():
     available_dates = [
         r[0] for r in db.execute("SELECT DISTINCT target_date FROM anomalies ORDER BY target_date DESC").fetchall()
     ]
+    if latest_date and latest_date not in available_dates:
+        # Always offer "today" (the live view) even before any anomalies have been flagged for it.
+        available_dates.insert(0, latest_date)
 
     return render_template(
         "index.html",
         latest=latest,
+        latest_date=latest_date,
         anomaly_date=anomaly_date,
         anomalies=anomalies,
         total_count=total_count,
         shown_count=len(anomalies),
         available_dates=available_dates,
+    )
+
+
+@app.route("/api/stats")
+def api_stats():
+    db = get_db()
+    latest = db.execute(
+        "SELECT timestamp, cpu_pct, mem_pct, battery_pct, charging FROM samples ORDER BY timestamp DESC LIMIT 1"
+    ).fetchone()
+    days_monitored = db.execute("SELECT COUNT(DISTINCT substr(timestamp,1,10)) FROM samples").fetchone()[0]
+    total_samples = db.execute("SELECT COUNT(*) FROM samples").fetchone()[0]
+
+    today = (datetime.fromisoformat(latest["timestamp"]).date().isoformat()) if latest else None
+    anomalies_today = 0
+    if today:
+        anomalies_today = db.execute(
+            "SELECT COUNT(*) FROM anomalies WHERE target_date = ?", (today,)
+        ).fetchone()[0]
+
+    since_24h = (datetime.fromisoformat(latest["timestamp"]) - timedelta(hours=24)).isoformat() if latest else None
+    launches_24h = 0
+    if since_24h:
+        launches_24h = db.execute(
+            "SELECT COUNT(*) FROM process_events WHERE event = 'started' AND timestamp >= ?", (since_24h,)
+        ).fetchone()[0]
+
+    battery_row = db.execute(
+        "SELECT cycle_count, full_charge_capacity_mwh FROM battery_health ORDER BY timestamp DESC LIMIT 1"
+    ).fetchone()
+
+    return jsonify(
+        {
+            "latest_timestamp": latest["timestamp"] if latest else None,
+            "cpu_pct": latest["cpu_pct"] if latest else None,
+            "mem_pct": latest["mem_pct"] if latest else None,
+            "battery_pct": latest["battery_pct"] if latest else None,
+            "charging": latest["charging"] if latest else None,
+            "days_monitored": days_monitored,
+            "total_samples": total_samples,
+            "anomalies_today": anomalies_today,
+            "launches_24h": launches_24h,
+            "cycle_count": battery_row["cycle_count"] if battery_row else None,
+        }
     )
 
 
@@ -104,8 +151,28 @@ def api_battery_health():
 @app.route("/api/timeline")
 def api_timeline():
     range_param = request.args.get("range", "24h")
-    hours = 24 if range_param == "24h" else 24 * 7
+    date_param = request.args.get("date")
     db = get_db()
+
+    if date_param:
+        # Historical view: show the selected calendar day (or the 7 days ending on it),
+        # not "last N hours from now" -- otherwise picking a past date from the anomaly
+        # date selector wouldn't actually change what the chart shows.
+        end_date = date.fromisoformat(date_param)
+        start_date = end_date if range_param == "24h" else end_date - timedelta(days=6)
+        since = f"{start_date.isoformat()}T00:00:00"
+        until = f"{end_date.isoformat()}T23:59:59.999999"
+        rows = db.execute(
+            """
+            SELECT timestamp, cpu_pct, mem_pct, battery_pct, charging
+            FROM samples WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp
+            """,
+            (since, until),
+        ).fetchall()
+        return jsonify([dict(r) for r in rows])
+
+    # Live view: last N hours from the most recent sample.
+    hours = 24 if range_param == "24h" else 24 * 7
     latest = latest_sample_time(db)
     if not latest:
         return jsonify([])
