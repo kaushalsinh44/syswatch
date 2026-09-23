@@ -215,15 +215,25 @@ Opens a local Flask app (default `http://127.0.0.1:5050`, override with `$env:PO
 - today's flagged anomalies (or the most recent date that has any), ranked by z-score, capped
   at the top 20 with a note on how many more exist
 - a **case file** view per anomaly (`/case/<id>`): every sample and process reading in the
-  +/-15 minute window around the flagged spike, which apps launched or exited in that window,
-  and any other anomalies flagged in that same window -- this is the actual investigation
-  payoff. For example, a large `msedgewebview2.exe` CPU spike in this dataset lines up with a
-  FiveM game session, Discord, and a Windows Defender scan all active in the same window -- a
-  real, explainable mystery solved.
+  +/-15 minute window around the flagged spike, which apps launched or exited in that window
+  (bursts of near-simultaneous launches from one app -- common with Electron apps like
+  Discord/Chrome/Steam -- are grouped into one row with a `x<count>` badge instead of repeating
+  the same line), and any other anomalies flagged in that same window -- this is the actual
+  investigation payoff. For example, a large `msedgewebview2.exe` CPU spike in this dataset
+  lines up with a FiveM game session, Discord, and a Windows Defender scan all active in the
+  same window -- a real, explainable mystery solved.
+- **notes on anomalies**: once you've investigated a pattern, annotate it right from the case
+  file ("just Discord launching, normal"). The note is keyed by `(category, subject)` -- e.g.
+  "process_cpu / Discord.exe" -- not a specific anomaly row, since `anomaly.py --all` reruns
+  delete and re-insert the anomalies table per date, so row ids aren't stable across reruns but
+  the *kind* of pattern is. The note then shows up automatically on every future occurrence of
+  that same pattern, on both the case file and the main anomaly list, so recurring
+  already-understood mysteries don't need re-investigating each time.
 
-The dashboard never writes to the database (WAL mode makes it safe to run alongside the logger),
-though "End task" does have a real side effect outside the database -- it terminates an actual
-process on your machine, guarded by the confirmation + protected-name checks described above.
+The dashboard never writes to the database (WAL mode makes it safe to run alongside the logger)
+except for the notes you add, which are the one piece of state the dashboard itself owns. "End
+task" also has a real side effect outside the database -- it terminates an actual process on
+your machine, guarded by the confirmation + protected-name checks described above.
 
 ## Trend insights
 

@@ -80,7 +80,10 @@
   <tr>
     <td>{{ a.timestamp[11:19] }}</td>
     <td><span class="badge badge-{{ a.category }}">{{ a.category.replace('_', ' ') }}</span></td>
-    <td>{{ a.description }}</td>
+    <td>
+      {{ a.description }}
+      {% if a.user_note %}<div class="muted">&#128221; {{ a.user_note }}</div>{% endif %}
+    </td>
     <td class="{{ 'z-high' if a.z_score > 8 else '' }}">{{ '%.1f'|format(a.z_score) }}</td>
     <td><a href="/case/{{ a.id }}">investigate &rarr;</a></td>
   </tr>

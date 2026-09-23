@@ -8,7 +8,7 @@ concurrent reads don't block the writer.
 
 import os
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -95,6 +95,21 @@ CREATE TABLE IF NOT EXISTS trends (
     pct_change  REAL NOT NULL,
     direction   TEXT NOT NULL,
     description TEXT NOT NULL
+);
+
+-- Owned by the dashboard itself (the only writer). Keyed by (category, subject) rather
+-- than a specific anomalies.id row, since anomaly.py's --all reruns DELETE+re-INSERT
+-- the anomalies table per date -- row ids churn constantly, but "this KIND of pattern"
+-- (e.g. process_cpu / Discord.exe) is stable, so a note attached to it keeps applying
+-- to every future occurrence instead of being orphaned on the next rerun.
+CREATE TABLE IF NOT EXISTS anomaly_notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    category   TEXT NOT NULL,
+    subject    TEXT NOT NULL DEFAULT '',
+    note       TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(category, subject)
 );
 """
 
@@ -196,6 +211,47 @@ def api_protected_processes():
     return jsonify(sorted(PROTECTED_PROCESS_NAMES))
 
 
+@app.route("/api/anomaly-notes", methods=["POST"])
+def api_save_anomaly_note():
+    if not is_same_origin_request():
+        return jsonify({"ok": False, "error": "Cross-origin request blocked."}), 403
+
+    data = request.get_json(silent=True) or {}
+    category = str(data.get("category") or "").strip()
+    subject = str(data.get("subject") or "").strip()
+    note = str(data.get("note") or "").strip()
+    if not category or not note:
+        return jsonify({"ok": False, "error": "category and note are required."}), 400
+
+    db = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    db.execute(
+        """
+        INSERT INTO anomaly_notes (category, subject, note, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(category, subject) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at
+        """,
+        (category, subject, note, now, now),
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/anomaly-notes", methods=["DELETE"])
+def api_delete_anomaly_note():
+    if not is_same_origin_request():
+        return jsonify({"ok": False, "error": "Cross-origin request blocked."}), 403
+
+    data = request.get_json(silent=True) or {}
+    category = str(data.get("category") or "").strip()
+    subject = str(data.get("subject") or "").strip()
+
+    db = get_db()
+    db.execute("DELETE FROM anomaly_notes WHERE category = ? AND subject = ?", (category, subject))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/")
 def index():
     db = get_db()
@@ -211,7 +267,12 @@ def index():
             "SELECT COUNT(*) FROM anomalies WHERE target_date = ?", (anomaly_date,)
         ).fetchone()[0]
         anomalies = db.execute(
-            "SELECT * FROM anomalies WHERE target_date = ? ORDER BY z_score DESC LIMIT ?",
+            """
+            SELECT a.*, n.note AS user_note
+            FROM anomalies a
+            LEFT JOIN anomaly_notes n ON n.category = a.category AND n.subject = COALESCE(a.subject, '')
+            WHERE a.target_date = ? ORDER BY a.z_score DESC LIMIT ?
+            """,
             (anomaly_date, TOP_ANOMALIES_SHOWN),
         ).fetchall()
 
@@ -424,7 +485,15 @@ def api_timeline():
 @app.route("/case/<int:anomaly_id>")
 def case(anomaly_id: int):
     db = get_db()
-    anomaly = db.execute("SELECT * FROM anomalies WHERE id = ?", (anomaly_id,)).fetchone()
+    anomaly = db.execute(
+        """
+        SELECT a.*, n.note AS user_note
+        FROM anomalies a
+        LEFT JOIN anomaly_notes n ON n.category = a.category AND n.subject = COALESCE(a.subject, '')
+        WHERE a.id = ?
+        """,
+        (anomaly_id,),
+    ).fetchone()
     if anomaly is None:
         abort(404)
 
@@ -465,8 +534,11 @@ def case(anomaly_id: int):
 
     other_anomalies = db.execute(
         """
-        SELECT * FROM anomalies WHERE timestamp BETWEEN ? AND ? AND id != ?
-        ORDER BY z_score DESC
+        SELECT a.*, n.note AS user_note
+        FROM anomalies a
+        LEFT JOIN anomaly_notes n ON n.category = a.category AND n.subject = COALESCE(a.subject, '')
+        WHERE a.timestamp BETWEEN ? AND ? AND a.id != ?
+        ORDER BY a.z_score DESC
         """,
         (window_start, window_end, anomaly_id),
     ).fetchall()

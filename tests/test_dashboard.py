@@ -237,6 +237,96 @@ class TestGroupProcessEvents:
         assert [r["process_name"] for r in result] == ["a.exe", "b.exe"]
 
 
+class TestAnomalyNotes:
+    def _post_note(self, client, category="process_cpu", subject="chrome.exe", note="just a test"):
+        return client.post(
+            "/api/anomaly-notes",
+            json={"category": category, "subject": subject, "note": note},
+            headers={"Origin": "http://localhost"},
+            base_url="http://localhost",
+        )
+
+    def _delete_note(self, client, category="process_cpu", subject="chrome.exe"):
+        return client.delete(
+            "/api/anomaly-notes",
+            json={"category": category, "subject": subject},
+            headers={"Origin": "http://localhost"},
+            base_url="http://localhost",
+        )
+
+    def test_save_note_cross_origin_blocked(self, client):
+        response = client.post(
+            "/api/anomaly-notes",
+            json={"category": "process_cpu", "subject": "chrome.exe", "note": "x"},
+            headers={"Origin": "http://evil.com"},
+        )
+        assert response.status_code == 403
+
+    def test_save_note_requires_category_and_note(self, client):
+        response = self._post_note(client, category="", note="")
+        assert response.status_code == 400
+
+    def test_save_and_retrieve_note(self, client, temp_db_path):
+        response = self._post_note(client, note="just Discord launching, normal")
+        assert response.status_code == 200
+        assert response.get_json()["ok"] is True
+
+        conn = sqlite3.connect(temp_db_path)
+        row = conn.execute("SELECT note FROM anomaly_notes WHERE category='process_cpu' AND subject='chrome.exe'").fetchone()
+        assert row[0] == "just Discord launching, normal"
+
+    def test_saving_again_upserts_not_duplicates(self, client, temp_db_path):
+        self._post_note(client, note="first version")
+        self._post_note(client, note="updated version")
+
+        conn = sqlite3.connect(temp_db_path)
+        rows = conn.execute("SELECT note FROM anomaly_notes WHERE category='process_cpu' AND subject='chrome.exe'").fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "updated version"
+
+    def test_delete_note(self, client, temp_db_path):
+        self._post_note(client)
+        response = self._delete_note(client)
+        assert response.status_code == 200
+
+        conn = sqlite3.connect(temp_db_path)
+        row = conn.execute("SELECT note FROM anomaly_notes WHERE category='process_cpu' AND subject='chrome.exe'").fetchone()
+        assert row is None
+
+    def test_note_joined_into_anomalies_list_on_index(self, client, temp_db_path):
+        seed_sample(temp_db_path, "2026-09-23T10:00:00+00:00")
+        conn = sqlite3.connect(temp_db_path)
+        conn.execute(
+            "INSERT INTO anomalies (run_at, target_date, timestamp, category, subject, value, "
+            "baseline_mean, baseline_std, z_score, description) "
+            "VALUES ('x', '2026-09-23', '2026-09-23T10:00:00', 'process_cpu', 'chrome.exe', 90, 5, 2, 10, 'spike')"
+        )
+        conn.commit()
+
+        self._post_note(client, category="process_cpu", subject="chrome.exe", note="known pattern")
+
+        response = client.get("/?date=2026-09-23")
+        assert response.status_code == 200
+        assert b"known pattern" in response.data
+
+    def test_note_with_null_subject_matches_io_category(self, client, temp_db_path):
+        # battery_drain/disk_io/net_io anomalies have subject=NULL in some cases --
+        # notes must key on '' consistently on both save and join.
+        conn = sqlite3.connect(temp_db_path)
+        conn.executescript(dashboard_app.ENSURE_SCHEMA)
+        conn.execute(
+            "INSERT INTO anomalies (run_at, target_date, timestamp, category, subject, value, "
+            "baseline_mean, baseline_std, z_score, description) "
+            "VALUES ('x', '2026-09-23', '2026-09-23T10:00:00', 'battery_drain', NULL, 1, 0.1, 0.05, 9, 'fast drain')"
+        )
+        conn.commit()
+
+        self._post_note(client, category="battery_drain", subject="", note="laptop was gaming")
+
+        response = client.get("/?date=2026-09-23")
+        assert b"laptop was gaming" in response.data
+
+
 class TestApiTimeline:
     def test_live_mode_uses_last_n_hours_from_latest_sample(self, client, temp_db_path):
         seed_sample(temp_db_path, "2026-09-23T10:00:00+00:00")

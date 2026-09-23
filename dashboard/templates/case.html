@@ -14,6 +14,26 @@
   (&plusmn;{{ '%.2f'|format(anomaly.baseline_std) }})
 </p>
 
+<div class="panel" id="noteSection" data-category="{{ anomaly.category }}" data-subject="{{ anomaly.subject or '' }}">
+  <div id="noteDisplay" style="{{ 'display:none' if not anomaly.user_note else '' }}">
+    <strong>&#128221; Your note:</strong> <span id="noteText">{{ anomaly.user_note or '' }}</span>
+    <button type="button" class="kill-btn" id="editNoteBtn" style="margin-left:0.5rem;">Edit</button>
+    <button type="button" class="kill-btn" id="deleteNoteBtn">Remove</button>
+  </div>
+  <div id="noteForm" style="{{ '' if not anomaly.user_note else 'display:none' }}">
+    <p class="muted" style="margin-top:0;">
+      Explain this pattern once (e.g. "just Discord launching, normal") and it'll show up
+      automatically on every future <strong>{{ anomaly.category.replace('_', ' ') }}{% if anomaly.subject %} / {{ anomaly.subject }}{% endif %}</strong>
+      anomaly -- no need to re-investigate the same recurring thing.
+    </p>
+    <textarea id="noteInput" rows="2" style="width:100%; font: inherit; padding:0.5rem; border-radius:6px; border:1px solid var(--border); background:var(--surface-2); color:var(--text);">{{ anomaly.user_note or '' }}</textarea>
+    <div style="margin-top:0.5rem;">
+      <button type="button" class="btn-group button" id="saveNoteBtn" style="font:inherit; padding:0.35rem 0.8rem; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:white; cursor:pointer;">Save note</button>
+      <button type="button" class="kill-btn" id="cancelNoteBtn" style="{{ '' if anomaly.user_note else 'display:none' }}">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <h2>What else was happening ({{ window_start[11:19] }}&ndash;{{ window_end[11:19] }} UTC)</h2>
 
 {% if process_events %}
@@ -49,7 +69,10 @@
   <tr>
     <td>{{ a.timestamp[11:19] }}</td>
     <td><span class="badge badge-{{ a.category }}">{{ a.category.replace('_', ' ') }}</span></td>
-    <td>{{ a.description }}</td>
+    <td>
+      {{ a.description }}
+      {% if a.user_note %}<div class="muted">&#128221; {{ a.user_note }}</div>{% endif %}
+    </td>
     <td>{{ '%.1f'|format(a.z_score) }}</td>
     <td><a href="/case/{{ a.id }}">investigate &rarr;</a></td>
   </tr>
@@ -92,4 +115,55 @@
 </table>
 
 <p><a href="/">&larr; back to dashboard</a></p>
+
+<script>
+(function () {
+  const section = document.getElementById('noteSection');
+  const category = section.dataset.category;
+  const subject = section.dataset.subject;
+
+  const display = document.getElementById('noteDisplay');
+  const form = document.getElementById('noteForm');
+  const input = document.getElementById('noteInput');
+  const textEl = document.getElementById('noteText');
+
+  function showForm() { display.style.display = 'none'; form.style.display = ''; input.focus(); }
+  function showDisplay() { form.style.display = 'none'; display.style.display = ''; }
+
+  document.getElementById('editNoteBtn')?.addEventListener('click', showForm);
+  document.getElementById('cancelNoteBtn')?.addEventListener('click', () => {
+    input.value = textEl.textContent;
+    showDisplay();
+  });
+
+  document.getElementById('saveNoteBtn').addEventListener('click', async () => {
+    const note = input.value.trim();
+    if (!note) { alert('Note can\'t be empty.'); return; }
+    const res = await fetch('/api/anomaly-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, subject, note }),
+    });
+    const result = await res.json();
+    if (!result.ok) { alert(result.error || 'Failed to save note.'); return; }
+    textEl.textContent = note;
+    document.getElementById('cancelNoteBtn').style.display = '';
+    showDisplay();
+  });
+
+  document.getElementById('deleteNoteBtn')?.addEventListener('click', async () => {
+    if (!confirm('Remove this note?')) return;
+    const res = await fetch('/api/anomaly-notes', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, subject }),
+    });
+    const result = await res.json();
+    if (!result.ok) { alert(result.error || 'Failed to remove note.'); return; }
+    input.value = '';
+    document.getElementById('cancelNoteBtn').style.display = 'none';
+    showForm();
+  });
+})();
+</script>
 {% endblock %}
