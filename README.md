@@ -221,7 +221,9 @@ Opens a local Flask app (default `http://127.0.0.1:5050`, override with `$env:PO
   the same line), and any other anomalies flagged in that same window -- this is the actual
   investigation payoff. For example, a large `msedgewebview2.exe` CPU spike in this dataset
   lines up with a FiveM game session, Discord, and a Windows Defender scan all active in the
-  same window -- a real, explainable mystery solved.
+  same window -- a real, explainable mystery solved. A busy window can easily produce 100+ rows
+  across its tables, so there's a filter box that live-filters the app-launches, other-anomalies,
+  and active-processes tables together by any text match (process name, PID, etc.).
 - **notes on anomalies**: once you've investigated a pattern, annotate it right from the case
   file ("just Discord launching, normal"). The note is keyed by `(category, subject)` -- e.g.
   "process_cpu / Discord.exe" -- not a specific anomaly row, since `anomaly.py --all` reruns

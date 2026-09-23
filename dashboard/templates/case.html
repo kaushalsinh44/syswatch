@@ -36,13 +36,21 @@
 
 <h2>What else was happening ({{ window_start[11:19] }}&ndash;{{ window_end[11:19] }} UTC)</h2>
 
+<div style="margin: 1rem 0;">
+  <input
+    type="search" id="caseFilterInput" placeholder="Filter by process name..."
+    style="width:100%; max-width:360px; font:inherit; padding:0.5rem 0.75rem; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text);"
+  >
+  <span class="muted" id="filterCount"></span>
+</div>
+
 {% if process_events %}
 <h3>App launches / exits in this window</h3>
 <p class="muted">
   This is the actual "oh, that's just when X launched" moment -- a new process appearing right
   before a flagged spike is usually the explanation.
 </p>
-<table>
+<table class="filterable-table">
   <tr><th>Time</th><th>Event</th><th>Process</th><th>PID</th></tr>
   {% for e in process_events %}
   <tr>
@@ -68,7 +76,7 @@
 
 {% if other_anomalies %}
 <h3>Other anomalies in this same window</h3>
-<table>
+<table class="filterable-table">
   <tr><th>Time</th><th>Category</th><th>Detail</th><th>Z-score</th><th></th></tr>
   {% for a in other_anomalies %}
   <tr>
@@ -87,7 +95,7 @@
 
 <h3>Processes active in this window</h3>
 {% if processes %}
-<table>
+<table class="filterable-table">
   <tr><th>Process</th><th>Peak CPU %</th><th>Peak Mem %</th><th># samples</th></tr>
   {% for p in processes %}
   <tr>
@@ -122,6 +130,27 @@
 <p><a href="/">&larr; back to dashboard</a></p>
 
 <script>
+(function () {
+  const filterInput = document.getElementById('caseFilterInput');
+  const filterCount = document.getElementById('filterCount');
+  if (!filterInput) return;
+
+  filterInput.addEventListener('input', () => {
+    const term = filterInput.value.trim().toLowerCase();
+    let total = 0, visible = 0;
+    document.querySelectorAll('table.filterable-table').forEach(table => {
+      // Skip the first row (header) in each table.
+      Array.from(table.rows).slice(1).forEach(row => {
+        total++;
+        const match = !term || row.textContent.toLowerCase().includes(term);
+        row.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+    });
+    filterCount.textContent = term ? `Showing ${visible} of ${total} rows` : '';
+  });
+})();
+
 document.querySelectorAll('.pid-toggle').forEach(link => {
   const originalLabel = link.textContent;
   link.addEventListener('click', () => {
