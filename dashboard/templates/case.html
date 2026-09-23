@@ -53,8 +53,13 @@
     </td>
     <td>{{ e.process_name }}</td>
     <td>
-      {% if e.pids|length <= 3 %}{{ e.pids|join(', ') }}
-      {% else %}{{ e.pids[:3]|join(', ') }} +{{ e.pids|length - 3 }} more{% endif %}
+      {% if e.pids|length <= 3 %}
+        {{ e.pids|join(', ') }}
+      {% else %}
+        {{ e.pids[:3]|join(', ') }}
+        <a href="javascript:void(0)" class="pid-toggle" title="{{ e.pids|join(', ') }}">+{{ e.pids|length - 3 }} more</a>
+        <span class="pid-rest" style="display:none;">, {{ e.pids[3:]|join(', ') }}</span>
+      {% endif %}
     </td>
   </tr>
   {% endfor %}
@@ -117,6 +122,16 @@
 <p><a href="/">&larr; back to dashboard</a></p>
 
 <script>
+document.querySelectorAll('.pid-toggle').forEach(link => {
+  const originalLabel = link.textContent;
+  link.addEventListener('click', () => {
+    const rest = link.nextElementSibling;
+    const nowExpanded = rest.style.display === 'none';
+    rest.style.display = nowExpanded ? '' : 'none';
+    link.textContent = nowExpanded ? 'show less' : originalLabel;
+  });
+});
+
 (function () {
   const section = document.getElementById('noteSection');
   const category = section.dataset.category;
