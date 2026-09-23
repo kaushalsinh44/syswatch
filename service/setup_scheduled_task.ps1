@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Registers the Laptop Mystery Detective logger as a Windows Scheduled Task
+    Registers the SysWatch logger as a Windows Scheduled Task
     that starts at logon and runs indefinitely (logger.py loops internally).
 
 .DESCRIPTION
@@ -67,7 +67,7 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
-    -Description "Runs Laptop Mystery Detective's background telemetry logger at user logon." `
+    -Description "Runs SysWatch's background telemetry logger at user logon." `
     -Force | Out-Null
 
 Write-Host "Registered scheduled task '$TaskName'."

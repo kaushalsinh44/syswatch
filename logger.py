@@ -299,7 +299,7 @@ def warm_up() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Laptop Mystery Detective telemetry logger")
+    parser = argparse.ArgumentParser(description="SysWatch telemetry logger")
     parser.add_argument(
         "--interval", type=float, default=DEFAULT_INTERVAL_SEC, help="Sampling interval in seconds"
     )

@@ -50,7 +50,7 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
-    -Description "Runs Laptop Mystery Detective's report.py weekly to generate the case report for the prior week." `
+    -Description "Runs SysWatch's report.py weekly to generate the case report for the prior week." `
     -Force | Out-Null
 
 Write-Host "Registered scheduled task '$TaskName' (Mondays at $At)."

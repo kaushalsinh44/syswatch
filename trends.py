@@ -1,4 +1,4 @@
-"""Trend insights for Laptop Mystery Detective.
+"""Trend insights for SysWatch.
 
 Compares each process's average CPU/memory over a recent window against an
 earlier window to surface longer-term drift -- "is this process gradually

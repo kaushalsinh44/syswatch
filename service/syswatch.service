@@ -1,0 +1,35 @@
+# UNTESTED -- template only, Windows is the tested platform for this project.
+#
+# logger.py loops internally, so this is a plain long-running service with
+# Restart=always -- NOT a .service + .timer pair (a timer is for periodic
+# short-lived invocations, which is the wrong shape here).
+#
+# Install as a per-user unit (no root needed):
+#   mkdir -p ~/.config/systemd/user
+#   cp syswatch.service ~/.config/systemd/user/
+#   # edit the paths below first!
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now syswatch.service
+#
+# Status / logs:
+#   systemctl --user status syswatch.service
+#   journalctl --user -u syswatch.service -f
+#
+# Stop / remove:
+#   systemctl --user disable --now syswatch.service
+
+[Unit]
+Description=SysWatch telemetry logger
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/path/to/syswatch/venv/bin/python3 /path/to/syswatch/logger.py
+WorkingDirectory=/path/to/syswatch
+Restart=always
+RestartSec=10
+StandardOutput=append:/path/to/syswatch/service/logger_output.log
+StandardError=append:/path/to/syswatch/service/logger_error.log
+
+[Install]
+WantedBy=default.target

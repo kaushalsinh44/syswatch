@@ -1,4 +1,4 @@
-"""Local read-only dashboard for Laptop Mystery Detective.
+"""Local read-only dashboard for SysWatch.
 
 Shows a CPU/memory/battery timeline plus flagged anomalies from anomaly.py,
 with a "case file" drill-down into what else was happening around a flagged

@@ -55,7 +55,7 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
-    -Description "Runs Laptop Mystery Detective's anomaly.py --all once a day so the dashboard stays current." `
+    -Description "Runs SysWatch's anomaly.py --all once a day so the dashboard stays current." `
     -Force | Out-Null
 
 Write-Host "Registered scheduled task '$TaskName' (daily at $At)."

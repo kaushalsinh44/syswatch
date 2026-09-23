@@ -1,4 +1,4 @@
-"""Anomaly detection for Laptop Mystery Detective.
+"""Anomaly detection for SysWatch.
 
 Compares a given day's telemetry against a rolling per-hour-of-day baseline
 built from prior days, and flags readings more than ~2 standard deviations

@@ -1,4 +1,4 @@
-"""Weekly case report for Laptop Mystery Detective.
+"""Weekly case report for SysWatch.
 
 Summarizes a week's worth of flagged anomalies (from the `anomalies` table,
 populated by anomaly.py) into a readable Markdown report: top mysteries,

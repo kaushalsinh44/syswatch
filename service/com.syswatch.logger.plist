@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UNTESTED -- template only, Windows is the tested platform for this project. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.syswatch.logger</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/syswatch/venv/bin/python3</string>  <!-- USER MUST EDIT -->
+        <string>/path/to/syswatch/logger.py</string>          <!-- USER MUST EDIT -->
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/path/to/syswatch</string>                        <!-- USER MUST EDIT -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/path/to/syswatch/service/logger_output.log</string>
+    <key>StandardErrorPath</key>
+    <string>/path/to/syswatch/service/logger_error.log</string>
+</dict>
+</plist>
+
+<!--
+Install (untested):
+  cp com.syswatch.logger.plist ~/Library/LaunchAgents/
+  launchctl load ~/Library/LaunchAgents/com.syswatch.logger.plist
+
+Remove:
+  launchctl unload ~/Library/LaunchAgents/com.syswatch.logger.plist
+  rm ~/Library/LaunchAgents/com.syswatch.logger.plist
+-->

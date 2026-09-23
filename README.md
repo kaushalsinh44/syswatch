@@ -1,4 +1,4 @@
-# Laptop Mystery Detective
+# SysWatch
 
 A background logger + dashboard that tracks system behavior over time and flags anomalies you
 can investigate. All four phases are built: baseline logging, a background service, anomaly
@@ -143,7 +143,7 @@ Unregister-ScheduledTask -TaskName LaptopMysteryDetectiveLogger -Confirm:$false
 
 ### macOS / Linux (untested templates)
 
-`service/com.laptopdetective.logger.plist` (launchd) and `service/laptop-detective.service`
+`service/com.syswatch.logger.plist` (launchd) and `service/syswatch.service`
 (systemd, per-user unit) are provided as documented starting points if you ever run this on
 macOS or Linux. Both are marked untested -- Windows is the only platform actually verified.
 Edit the placeholder paths before use; install instructions are in comments within each file.
