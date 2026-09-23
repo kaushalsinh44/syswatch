@@ -6,15 +6,26 @@ spike. Safe to run alongside logger.py -- the database is in WAL mode, so
 concurrent reads don't block the writer.
 """
 
+import os
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import psutil
 from flask import Flask, abort, g, jsonify, render_template, request
 
 DB_PATH = Path(__file__).parent.parent / "data" / "telemetry.db"
 TOP_ANOMALIES_SHOWN = 20
 CASE_WINDOW_MINUTES = 15
+
+# Never kill these regardless of what the client sends -- killing the wrong one of these
+# can crash networking, the shell, or (for python.exe/pythonw.exe) this very dashboard or
+# the logger itself.
+PROTECTED_PROCESS_NAMES = {
+    "system", "system idle process", "registry", "smss.exe", "csrss.exe", "wininit.exe",
+    "winlogon.exe", "services.exe", "lsass.exe", "svchost.exe", "explorer.exe", "dwm.exe",
+    "python.exe", "pythonw.exe",
+}
 
 app = Flask(__name__)
 
@@ -131,9 +142,94 @@ def api_stats():
     )
 
 
+@app.route("/api/top-processes")
+def api_top_processes():
+    """Top processes as of the most recent sample (up to ~45s old -- the logger's own
+    interval -- reusing its already warm-up-primed cpu% readings rather than
+    re-implementing psutil's warm-up dance for a one-off request)."""
+    db = get_db()
+    latest_sample = db.execute("SELECT id, timestamp FROM samples ORDER BY timestamp DESC LIMIT 1").fetchone()
+    if not latest_sample:
+        return jsonify({"as_of": None, "processes": []})
+    rows = db.execute(
+        """
+        SELECT DISTINCT process_name, pid, cpu_pct, mem_pct FROM process_samples
+        WHERE sample_id = ? ORDER BY cpu_pct DESC
+        """,
+        (latest_sample["id"],),
+    ).fetchall()
+    return jsonify({"as_of": latest_sample["timestamp"], "processes": [dict(r) for r in rows]})
+
+
+@app.route("/api/kill-process", methods=["POST"])
+def api_kill_process():
+    data = request.get_json(silent=True) or {}
+    pid = data.get("pid")
+    expected_name = str(data.get("process_name") or "").strip().lower()
+
+    if not isinstance(pid, int):
+        return jsonify({"ok": False, "error": "Missing or invalid pid."}), 400
+    if pid == os.getpid():
+        return jsonify({"ok": False, "error": "Refusing to kill the dashboard's own process."}), 403
+    if expected_name in PROTECTED_PROCESS_NAMES:
+        return jsonify({"ok": False, "error": f"Refusing to kill a protected system process ({expected_name})."}), 403
+
+    try:
+        proc = psutil.Process(pid)
+        actual_name = proc.name()
+        if actual_name.lower() != expected_name:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            f"PID {pid} is now '{actual_name}', not '{expected_name}' -- "
+                            "it likely already exited. Refusing to kill an unrelated process."
+                        ),
+                    }
+                ),
+                409,
+            )
+        if actual_name.lower() in PROTECTED_PROCESS_NAMES:
+            return jsonify({"ok": False, "error": f"Refusing to kill a protected system process ({actual_name})."}), 403
+
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except psutil.TimeoutExpired:
+            proc.kill()  # didn't respond to terminate() -- escalate to a hard kill
+
+        return jsonify({"ok": True, "message": f"Ended {actual_name} (PID {pid})."})
+    except psutil.NoSuchProcess:
+        return jsonify({"ok": False, "error": "That process is already gone."}), 404
+    except psutil.AccessDenied:
+        return jsonify({"ok": False, "error": "Access denied -- this process needs elevated rights to end."}), 403
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/battery")
 def battery():
     return render_template("battery.html")
+
+
+@app.route("/trends")
+def trends():
+    return render_template("trends.html")
+
+
+@app.route("/api/trends")
+def api_trends():
+    db = get_db()
+    row = db.execute("SELECT MAX(as_of_date), MAX(computed_at) FROM trends").fetchone()
+    as_of_date, computed_at = (row[0], row[1]) if row else (None, None)
+    rows = db.execute(
+        """
+        SELECT subject, metric, recent_avg, prior_avg, pct_change, direction, description
+        FROM trends ORDER BY ABS(pct_change) DESC
+        """
+    ).fetchall()
+    return jsonify({"as_of_date": as_of_date, "computed_at": computed_at, "trends": [dict(r) for r in rows]})
 
 
 @app.route("/api/battery-health")

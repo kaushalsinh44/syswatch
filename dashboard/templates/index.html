@@ -34,6 +34,10 @@
   </div>
 </div>
 
+<p class="muted" id="topTrendTeaser" style="display:none;">
+  📈 Biggest mover: <span id="topTrendText"></span> &middot; <a href="/trends">see all trends &rarr;</a>
+</p>
+
 <div class="btn-group" id="rangeButtons">
   <button data-range="24h" class="active">{{ 'Last 24h' if is_live else 'That day' }}</button>
   <button data-range="7d">{{ 'Last 7 days' if is_live else '7 days ending that day' }}</button>
@@ -45,6 +49,16 @@
 <div class="panel" style="position: relative; height: 320px;">
   <canvas id="timelineChart"></canvas>
 </div>
+
+<h2>Top processes right now</h2>
+<p class="muted">
+  As of <span id="topProcAsOf">&mdash;</span>. Spot something hogging resources? End it directly
+  -- you'll be asked to confirm first.
+</p>
+<table>
+  <tr><th>Process</th><th>CPU %</th><th>Mem %</th><th>PID</th><th></th></tr>
+  <tbody id="topProcessesBody"></tbody>
+</table>
 
 <h2>Flagged anomalies
   {% if available_dates %}
@@ -170,9 +184,96 @@ async function loadStats() {
   document.getElementById('statSamples').textContent = `${s.total_samples.toLocaleString()} samples collected`;
 }
 
+const PROTECTED_PROCESS_NAMES = new Set([
+  'system', 'system idle process', 'registry', 'smss.exe', 'csrss.exe', 'wininit.exe',
+  'winlogon.exe', 'services.exe', 'lsass.exe', 'svchost.exe', 'explorer.exe', 'dwm.exe',
+  'python.exe', 'pythonw.exe',
+]);
+
+async function loadTopProcesses() {
+  const res = await fetch('/api/top-processes');
+  const data = await res.json();
+  document.getElementById('topProcAsOf').textContent = timeAgo(data.as_of);
+
+  const tbody = document.getElementById('topProcessesBody');
+  tbody.innerHTML = '';
+  data.processes.slice(0, 8).forEach(p => {
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    nameTd.textContent = p.process_name;
+    const cpuTd = document.createElement('td');
+    cpuTd.textContent = `${p.cpu_pct.toFixed(1)}%`;
+    const memTd = document.createElement('td');
+    memTd.textContent = `${p.mem_pct.toFixed(1)}%`;
+    const pidTd = document.createElement('td');
+    pidTd.textContent = p.pid;
+    const actionTd = document.createElement('td');
+    const btn = document.createElement('button');
+    btn.className = 'kill-btn';
+    const isProtected = PROTECTED_PROCESS_NAMES.has(p.process_name.toLowerCase());
+    if (isProtected) {
+      btn.disabled = true;
+      btn.textContent = 'Protected';
+      btn.title = 'System-critical process -- ending it here is disabled for safety.';
+    } else {
+      btn.textContent = 'End task';
+      btn.dataset.pid = p.pid;
+      btn.dataset.name = p.process_name;
+    }
+    actionTd.appendChild(btn);
+    tr.append(nameTd, cpuTd, memTd, pidTd, actionTd);
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('topProcessesBody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.kill-btn');
+  if (!btn) return;
+  const pid = parseInt(btn.dataset.pid, 10);
+  const name = btn.dataset.name;
+  if (!confirm(`End "${name}" (PID ${pid})?\n\nAny unsaved work in that app will be lost.`)) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Ending…';
+  try {
+    const res = await fetch('/api/kill-process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pid, process_name: name }),
+    });
+    const result = await res.json();
+    if (!result.ok) {
+      alert(result.error);
+      btn.disabled = false;
+      btn.textContent = 'End task';
+      return;
+    }
+  } catch (err) {
+    alert('Request failed: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'End task';
+    return;
+  }
+  loadTopProcesses();
+});
+
+async function loadTopTrend() {
+  const res = await fetch('/api/trends');
+  const data = await res.json();
+  if (!data.trends.length) return;
+  const t = data.trends[0];
+  const sign = t.pct_change >= 0 ? '+' : '';
+  document.getElementById('topTrendText').textContent =
+    `${t.subject} ${t.metric === 'cpu' ? 'CPU' : 'memory'} ${t.direction === 'up' ? 'up' : 'down'} ${sign}${(t.pct_change * 100).toFixed(0)}% over the last week`;
+  document.getElementById('topTrendTeaser').style.display = 'block';
+}
+
 loadTimeline('24h');
 loadStats();
+loadTopProcesses();
+loadTopTrend();
 setInterval(loadStats, 20000);
+setInterval(loadTopProcesses, 20000);
 if (IS_LIVE) {
   setInterval(() => {
     const active = document.querySelector('#rangeButtons button.active');

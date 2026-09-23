@@ -12,8 +12,10 @@ Flags three categories:
 """
 
 import argparse
+import platform
 import sqlite3
 import statistics
+import subprocess
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -23,6 +25,7 @@ DEFAULT_LOOKBACK_DAYS = 14
 Z_THRESHOLD = 3.0
 MIN_BASELINE_SAMPLES = 10  # too little history to be meaningful -> skip
 EPISODE_GAP_MINUTES = 5.0  # merge same subject+category flags this close together into one episode
+NOTIFY_Z_THRESHOLD = 8.0  # only the genuinely severe end -- matches the dashboard's "z-high" highlight
 
 # A tiny baseline stddev (e.g. a process that's almost always idle) turns any
 # nonzero reading into a huge z-score even though the absolute jump is trivial.
@@ -356,6 +359,51 @@ def save_anomalies(conn: sqlite3.Connection, target_date: str, anomalies: list[d
     conn.commit()
 
 
+def send_notification(title: str, message: str) -> None:
+    """Best-effort Windows toast notification via PowerShell's WinRT toast API --
+    no extra pip dependency needed. Uses PowerShell's own registered AUMID
+    ("Windows PowerShell") as the notifier, which works for ad-hoc scripts
+    without needing to register a dedicated app id. Silently does nothing on
+    failure or on non-Windows platforms -- a missed notification should never
+    break anomaly detection itself.
+    """
+    if platform.system() != "Windows":
+        return
+    try:
+        ps_script = f"""
+        [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+        [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+        $template = @"
+<toast><visual><binding template="ToastGeneric"><text>{title}</text><text>{message}</text></binding></visual></toast>
+"@
+        $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+        $xml.LoadXml($template)
+        $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
+        [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Windows PowerShell").Show($toast)
+        """
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            timeout=10,
+        )
+    except Exception:
+        pass
+
+
+def maybe_notify(target_date: str, anomalies: list[dict]) -> None:
+    """Only notify for the live/current day -- never during a --all backfill of
+    old history, which would otherwise fire a notification storm."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    if target_date != today:
+        return
+    severe = [a for a in anomalies if a["z_score"] >= NOTIFY_Z_THRESHOLD]
+    if not severe:
+        return
+    top = max(severe, key=lambda x: x["z_score"])
+    title = f"{len(severe)} myster{'y' if len(severe) == 1 else 'ies'} flagged today"
+    send_notification(title, top["description"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Detect telemetry anomalies vs rolling baseline")
     parser.add_argument("--date", help="Target date YYYY-MM-DD (default: today, UTC)")
@@ -382,6 +430,7 @@ def main() -> None:
             date_str = d.isoformat()
             anomalies = run_detection(conn, date_str, args.lookback_days)
             save_anomalies(conn, date_str, anomalies)
+            maybe_notify(date_str, anomalies)
             if anomalies:
                 print(f"{date_str}: {len(anomalies)} anomalies")
             total += len(anomalies)
@@ -394,6 +443,7 @@ def main() -> None:
         print(f"{target_date}: {len(anomalies)} anomalies flagged.")
         for a in sorted(anomalies, key=lambda x: x["z_score"], reverse=True):
             print(f"  [{a['category']}] {a['description']} (z={a['z_score']:.1f})")
+        maybe_notify(target_date, anomalies)
 
     conn.close()
 

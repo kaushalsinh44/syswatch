@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Trends - Laptop Mystery Detective{% endblock %}
+{% block content %}
+<h1>Usage Trends</h1>
+<p class="muted">
+  Comparing each process's average usage over the last 7 days against the 21 days before that --
+  a snapshot optimizer can't see this, since it has no memory of what "normal" looked like a
+  month ago. Only changes of 25%+ are shown; run <code>python trends.py</code> to refresh.
+</p>
+<p class="muted">Last computed: <span id="computedAt">&mdash;</span></p>
+
+<div id="trendsContainer"></div>
+
+<script>
+function fmtPct(n) {
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${(n * 100).toFixed(0)}%`;
+}
+
+async function loadTrends() {
+  const res = await fetch('/api/trends');
+  const data = await res.json();
+
+  document.getElementById('computedAt').textContent = data.computed_at
+    ? `${data.computed_at.replace('T', ' ').slice(0, 16)} UTC (as of ${data.as_of_date})`
+    : 'never -- run python trends.py first';
+
+  const container = document.getElementById('trendsContainer');
+  if (!data.trends.length) {
+    container.innerHTML = `<p class="muted">
+      No trends yet. This needs at least 4 weeks of history (7 recent + 21 prior days) to compare
+      against, and/or no process crossed the 25% change threshold. Run <code>python trends.py</code>
+      once you have enough history.
+    </p>`;
+    return;
+  }
+
+  const rows = data.trends.map(t => `
+    <tr>
+      <td>${t.subject}</td>
+      <td>${t.metric === 'cpu' ? 'CPU' : 'Memory'}</td>
+      <td><span class="badge" style="background:${t.direction === 'up' ? 'var(--warn)' : 'var(--good)'}">
+        ${t.direction === 'up' ? '↑ up' : '↓ down'}
+      </span></td>
+      <td style="font-weight:700; color:${t.direction === 'up' ? 'var(--warn)' : 'var(--good)'}">${fmtPct(t.pct_change)}</td>
+      <td>${t.prior_avg.toFixed(1)}% → ${t.recent_avg.toFixed(1)}%</td>
+    </tr>
+  `).join('');
+
+  container.innerHTML = `
+    <table>
+      <tr><th>Process</th><th>Metric</th><th>Direction</th><th>Change</th><th>Prior → Recent avg</th></tr>
+      ${rows}
+    </table>
+  `;
+}
+
+loadTrends();
+</script>
+{% endblock %}

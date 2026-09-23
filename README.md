@@ -188,6 +188,15 @@ default) that runs `anomaly.py --all`, so the anomalies table -- and therefore t
 stays current without manual runs. `--all` is used rather than just "today" since it's cheap
 (a few seconds per day analyzed against a 14-day baseline) and idempotent.
 
+### Desktop notifications
+
+Any time `anomaly.py` finds an anomaly with z-score >= `NOTIFY_Z_THRESHOLD` (8.0) **for the
+current day**, it fires a Windows toast notification via PowerShell's WinRT toast API -- no
+extra pip dependency, same subprocess pattern as the battery-health WMI query. It never notifies
+while backfilling old history (`--all` only notifies for today's slice of the run, and `--date`
+for a past date never notifies), so re-analyzing a month of history won't trigger a notification
+storm. A missed/failed notification never breaks detection itself -- it's entirely best-effort.
+
 ## Phase 4 -- dashboard
 
 ```powershell
@@ -195,7 +204,14 @@ python dashboard/app.py
 ```
 
 Opens a local Flask app (default `http://127.0.0.1:5050`, override with `$env:PORT`) with:
-- a CPU/memory/battery timeline chart (last 24h or 7d)
+- live stat cards (CPU/mem/battery right now, mysteries today, apps launched, days
+  investigated) that auto-refresh every 20s, and a CPU/memory/battery timeline chart (last 24h
+  or 7d, or a specific historical day/week via the anomaly date picker below)
+- a **"Top processes right now"** panel with an **End task** button per process -- confirms
+  before acting, and refuses to touch anything in a small protected-process list (`System`,
+  `explorer.exe`, `python.exe`/`pythonw.exe` so it can't kill its own logger/dashboard, etc.)
+  both client- and server-side. The server also re-verifies the PID still matches the expected
+  process name right before killing, in case it already exited and the PID was reused.
 - today's flagged anomalies (or the most recent date that has any), ranked by z-score, capped
   at the top 20 with a note on how many more exist
 - a **case file** view per anomaly (`/case/<id>`): every sample and process reading in the
@@ -205,8 +221,25 @@ Opens a local Flask app (default `http://127.0.0.1:5050`, override with `$env:PO
   FiveM game session, Discord, and a Windows Defender scan all active in the same window -- a
   real, explainable mystery solved.
 
-The dashboard only reads the database (never writes), so it's safe to run at the same time as
-the logger -- WAL mode allows concurrent access.
+The dashboard never writes to the database (WAL mode makes it safe to run alongside the logger),
+though "End task" does have a real side effect outside the database -- it terminates an actual
+process on your machine, guarded by the confirmation + protected-name checks described above.
+
+## Trend insights
+
+```powershell
+python trends.py                        # compute trends as of today
+python trends.py --as-of 2026-09-15      # compute as of a specific past date
+```
+
+For every process, compares its average CPU/memory over the last 7 days against the 21 days
+before that (needs ~4 weeks of history to say anything), and reports anything that changed by
+25% or more. This is the one thing a generic "PC optimizer" fundamentally can't do -- those
+tools have no memory of what your machine looked like last month, so they can't tell you a
+process has been quietly getting worse over time. View it at `/trends`, or see the single
+biggest mover as a teaser on the main dashboard. Not currently wired into a scheduled task --
+run it manually (or add a call to it in `service/setup_daily_anomaly_task.ps1` if you want it
+automatic).
 
 ## Battery health tracking
 
